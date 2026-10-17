@@ -6,8 +6,14 @@
 import torch
 import torch.nn as nn
 import math
+import os
 import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 from util.model_util import VisionRotaryEmbeddingFast, get_2d_sincos_pos_embed, RMSNorm
+
+_SDPA_BACKEND = os.environ.get("JIT_SDPA_BACKEND", "reference")
+if _SDPA_BACKEND not in ("reference", "flash"):
+    raise ValueError(f"Unsupported JIT_SDPA_BACKEND: {_SDPA_BACKEND}")
 
 
 def modulate(x, shift, scale):
@@ -92,6 +98,14 @@ class LabelEmbedder(nn.Module):
 
 
 def scaled_dot_product_attention(query, key, value, dropout_p=0.0) -> torch.Tensor:
+    # The training recipe has zero attention dropout. Keep the original path for
+    # nonzero dropout, whose random-number consumption depends on the backend.
+    if _SDPA_BACKEND == "flash" and dropout_p == 0.0 and value.dtype == torch.bfloat16:
+        with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
+            # RoPE produces fp32 Q/K. This local bf16 rounding is an N2 change;
+            # all master parameters, optimizer states and EMA remain fp32.
+            return F.scaled_dot_product_attention(query.to(value.dtype), key.to(value.dtype), value,
+                                                  dropout_p=0.0)
     L, S = query.size(-2), key.size(-2)
     scale_factor = 1 / math.sqrt(query.size(-1))
     attn_bias = torch.zeros(query.size(0), 1, L, S, dtype=query.dtype).cuda()

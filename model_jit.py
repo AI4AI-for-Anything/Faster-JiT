@@ -14,6 +14,11 @@ from util.model_util import VisionRotaryEmbeddingFast, get_2d_sincos_pos_embed, 
 _SDPA_BACKEND = os.environ.get("JIT_SDPA_BACKEND", "reference")
 if _SDPA_BACKEND not in ("reference", "flash"):
     raise ValueError(f"Unsupported JIT_SDPA_BACKEND: {_SDPA_BACKEND}")
+_FUSED_QK_PREP = os.environ.get("JIT_FUSED_QK_PREP", "0") == "1"
+if _FUSED_QK_PREP:
+    if _SDPA_BACKEND != "flash":
+        raise ValueError("JIT_FUSED_QK_PREP requires JIT_SDPA_BACKEND=flash")
+    from util.fused_qknorm_rope import qknorm_rope
 
 
 def modulate(x, shift, scale):
@@ -131,17 +136,34 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
+        if _FUSED_QK_PREP and (head_dim != 64 or not qk_norm or attn_drop != 0.):
+            print("JIT_FUSED_QK_PREP fallback: requires head_dim=64, QK norm and zero attention dropout")
 
     def forward(self, x, rope):
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
-
-        q = self.q_norm(q)
-        k = self.k_norm(k)
-
-        q = rope(q)
-        k = rope(k)
+        qkv = self.qkv(x)
+        if (_FUSED_QK_PREP and qkv.is_cuda and qkv.dtype == torch.bfloat16
+                and qkv.stride(-1) == 1
+                and C // self.num_heads == 64 and self.attn_drop.p == 0.
+                and type(self.q_norm) is RMSNorm and type(self.k_norm) is RMSNorm
+                and self.q_norm.weight.dtype == torch.float32 and self.k_norm.weight.dtype == torch.float32
+                and self.q_norm.variance_epsilon == self.k_norm.variance_epsilon
+                and type(rope) is VisionRotaryEmbeddingFast
+                and rope.freqs_cos.shape == (N, 64) and rope.freqs_sin.shape == (N, 64)
+                and rope.freqs_cos.dtype == torch.float32 and rope.freqs_sin.dtype == torch.float32
+                and rope.freqs_cos.device == qkv.device and rope.freqs_sin.device == qkv.device
+                and not rope.freqs_cos.requires_grad and not rope.freqs_sin.requires_grad):
+            q, k, v = qknorm_rope(qkv, self.q_norm.weight, self.k_norm.weight,
+                                 rope.freqs_cos, rope.freqs_sin, self.q_norm.variance_epsilon)
+        else:
+            if _FUSED_QK_PREP:
+                print("JIT_FUSED_QK_PREP fallback: dtype, shape, layout, norm or RoPE guard failed")
+            qkv = qkv.reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+            q, k, v = qkv[0], qkv[1], qkv[2]
+            q = self.q_norm(q)
+            k = self.k_norm(k)
+            q = rope(q)
+            k = rope(k)
 
         x = scaled_dot_product_attention(q, k, v, dropout_p=self.attn_drop.p if self.training else 0.)
 

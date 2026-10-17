@@ -1,0 +1,8 @@
+{
+  "environment": {
+    "JIT_SDPA_BACKEND": "flash",
+    "JIT_COMPILE_MODEL": "1",
+    "JIT_COMPILE_MODE": "reduce-overhead",
+    "JIT_FUSED_QK_PREP": "1"
+  }
+}

@@ -12,12 +12,14 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 from util.model_util import VisionRotaryEmbeddingFast, get_2d_sincos_pos_embed, RMSNorm
 
 _SDPA_BACKEND = os.environ.get("JIT_SDPA_BACKEND", "reference")
-if _SDPA_BACKEND not in ("reference", "flash"):
+if _SDPA_BACKEND not in ("reference", "flash", "flex"):
     raise ValueError(f"Unsupported JIT_SDPA_BACKEND: {_SDPA_BACKEND}")
+if _SDPA_BACKEND == "flex":
+    from torch.nn.attention.flex_attention import flex_attention
 _FUSED_QK_PREP = os.environ.get("JIT_FUSED_QK_PREP", "0") == "1"
 if _FUSED_QK_PREP:
-    if _SDPA_BACKEND != "flash":
-        raise ValueError("JIT_FUSED_QK_PREP requires JIT_SDPA_BACKEND=flash")
+    if _SDPA_BACKEND not in ("flash", "flex"):
+        raise ValueError("JIT_FUSED_QK_PREP requires a bf16 attention backend")
     from util.fused_qknorm_rope import qknorm_rope
 
 
@@ -105,6 +107,8 @@ class LabelEmbedder(nn.Module):
 def scaled_dot_product_attention(query, key, value, dropout_p=0.0) -> torch.Tensor:
     # The training recipe has zero attention dropout. Keep the original path for
     # nonzero dropout, whose random-number consumption depends on the backend.
+    if _SDPA_BACKEND == "flex" and dropout_p == 0.0 and value.dtype == torch.bfloat16:
+        return flex_attention(query.to(value.dtype), key.to(value.dtype), value)
     if _SDPA_BACKEND == "flash" and dropout_p == 0.0 and value.dtype == torch.bfloat16:
         with sdpa_kernel(SDPBackend.FLASH_ATTENTION):
             # RoPE produces fp32 Q/K. This local bf16 rounding is an N2 change;

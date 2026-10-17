@@ -13,7 +13,32 @@ import torch_fidelity
 import copy
 
 
+def _configure_fused_adamw(optimizer):
+    if os.environ.get("JIT_FUSED_ADAMW", "0") != "1":
+        return
+    if not isinstance(optimizer, torch.optim.AdamW):
+        raise TypeError("JIT_FUSED_ADAMW requires torch.optim.AdamW")
+    for group in optimizer.param_groups:
+        if group.get("differentiable", False):
+            raise ValueError("JIT_FUSED_ADAMW does not support differentiable AdamW")
+        if not all(p.is_cuda and p.dtype == torch.float32 for p in group["params"]):
+            raise ValueError("JIT_FUSED_ADAMW requires CUDA fp32 master parameters")
+        group["foreach"] = False
+        group["fused"] = True
+        # Old checkpoints created by foreach AdamW keep their step scalars on
+        # the CPU. The fused implementation needs these on the parameter device.
+        for p in group["params"]:
+            state = optimizer.state.get(p, {})
+            if "step" in state:
+                step = state["step"]
+                if not isinstance(step, torch.Tensor) or step.dtype != torch.float32 or step.ndim != 0:
+                    raise ValueError("JIT_FUSED_ADAMW requires fp32 scalar checkpoint steps")
+                state["step"] = step.to(device=p.device)
+    optimizer._step_supports_amp_scaling = True
+
+
 def train_one_epoch(model, model_without_ddp, data_loader, optimizer, device, epoch, log_writer=None, args=None):
+    _configure_fused_adamw(optimizer)
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', misc.SmoothedValue(window_size=1, fmt='{value:.6f}'))

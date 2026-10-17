@@ -1,0 +1,12 @@
+{
+  "environment": {
+    "JIT_SDPA_BACKEND": "flex",
+    "JIT_COMPILE_MODEL": "1",
+    "JIT_COMPILE_MODE": "reduce-overhead",
+    "JIT_FUSED_QK_PREP": "1",
+    "JIT_COMPILE_EMA": "1",
+    "JIT_COMPILE_EMA_MODE": "reduce-overhead",
+    "JIT_BF16_CONTEXT": "1",
+    "JIT_FUSED_ADAMW": "1"
+  }
+}

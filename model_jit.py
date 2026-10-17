@@ -342,6 +342,8 @@ class JiT(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
+    @torch.compile(disable=os.environ.get("JIT_COMPILE_MODEL", "0") != "1",
+                   mode=os.environ.get("JIT_COMPILE_MODE", "default"))
     def forward(self, x, t, y):
         """
         x: (N, C, H, W)

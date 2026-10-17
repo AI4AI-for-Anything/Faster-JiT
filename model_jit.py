@@ -17,6 +17,7 @@ if _SDPA_BACKEND not in ("reference", "flash", "flex"):
 if _SDPA_BACKEND == "flex":
     from torch.nn.attention.flex_attention import flex_attention
 _FUSED_QK_PREP = os.environ.get("JIT_FUSED_QK_PREP", "0") == "1"
+_BF16_CONTEXT = os.environ.get("JIT_BF16_CONTEXT", "0") == "1"
 if _FUSED_QK_PREP:
     if _SDPA_BACKEND not in ("flash", "flex"):
         raise ValueError("JIT_FUSED_QK_PREP requires a bf16 attention backend")
@@ -390,6 +391,11 @@ class JiT(nn.Module):
             if self.in_context_len > 0 and i == self.in_context_start:
                 in_context_tokens = y_emb.unsqueeze(1).repeat(1, self.in_context_len, 1)
                 in_context_tokens += self.in_context_posemb
+                if _BF16_CONTEXT:
+                    if x.is_cuda and x.dtype == torch.bfloat16:
+                        in_context_tokens = in_context_tokens.to(x.dtype)
+                    else:
+                        print("JIT_BF16_CONTEXT fallback: requires CUDA bf16 patch activations")
                 x = torch.cat([in_context_tokens, x], dim=1)
             x = block(x, c, self.feat_rope if i < self.in_context_start else self.feat_rope_incontext)
 

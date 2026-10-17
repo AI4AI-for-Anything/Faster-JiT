@@ -1,4 +1,5 @@
 import torch
+import os
 import torch.nn as nn
 from model_jit import JiT_models
 
@@ -121,6 +122,8 @@ class Denoiser(nn.Module):
         z_next = z + (t_next - t) * v_pred
         return z_next
 
+    @torch.compile(disable=os.environ.get("JIT_COMPILE_EMA", "0") != "1",
+                   mode=os.environ.get("JIT_COMPILE_EMA_MODE", "default"))
     @torch.no_grad()
     def update_ema(self):
         source_params = list(self.parameters())

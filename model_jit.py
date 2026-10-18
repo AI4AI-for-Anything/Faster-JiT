@@ -18,6 +18,10 @@ if _SDPA_BACKEND == "flex":
     from torch.nn.attention.flex_attention import flex_attention
 _FUSED_QK_PREP = os.environ.get("JIT_FUSED_QK_PREP", "0") == "1"
 _BF16_CONTEXT = os.environ.get("JIT_BF16_CONTEXT", "0") == "1"
+_SWIGLU_BIAS_FUSION = os.environ.get("JIT_SWIGLU_BIAS_FUSION", "0") == "1"
+if _SWIGLU_BIAS_FUSION:
+    from util.fused_swiglu_bias import BiasGradientLinear, supported as swiglu_bias_supported, _activation as swiglu_bias_activation
+    print("JIT_SWIGLU_BIAS_FUSION enabled: guarded projection+activation, deterministic FP32 bias partials")
 if _FUSED_QK_PREP:
     if _SDPA_BACKEND not in ("flash", "flex"):
         raise ValueError("JIT_FUSED_QK_PREP requires a bf16 attention backend")
@@ -189,14 +193,21 @@ class SwiGLUFFN(nn.Module):
     ) -> None:
         super().__init__()
         hidden_dim = int(hidden_dim * 2 / 3)
-        self.w12 = nn.Linear(dim, 2 * hidden_dim, bias=bias)
+        linear_cls = BiasGradientLinear if _SWIGLU_BIAS_FUSION else nn.Linear
+        self.w12 = linear_cls(dim, 2 * hidden_dim, bias=bias)
         self.w3 = nn.Linear(hidden_dim, dim, bias=bias)
         self.ffn_dropout = nn.Dropout(drop)
 
     def forward(self, x):
-        x12 = self.w12(x)
-        x1, x2 = x12.chunk(2, dim=-1)
-        hidden = F.silu(x1) * x2
+        if _SWIGLU_BIAS_FUSION and swiglu_bias_supported(x, self.w12):
+            x12 = self.w12(x, fused_bias_grad=True)
+            hidden = swiglu_bias_activation(x12, self.w12.bias)
+        else:
+            if _SWIGLU_BIAS_FUSION:
+                print("JIT_SWIGLU_BIAS_FUSION fallback: production shape/dtype/autocast guard; original bias gradient restored")
+            x12 = self.w12(x)
+            x1, x2 = x12.chunk(2, dim=-1)
+            hidden = F.silu(x1) * x2
         return self.w3(self.ffn_dropout(hidden))
 
 

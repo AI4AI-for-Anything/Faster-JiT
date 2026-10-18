@@ -385,6 +385,8 @@ class JiT(nn.Module):
         # forward JiT
         x = self.x_embedder(x)
         x += self.pos_embed
+        if os.environ.get("JIT_CONTIGUOUS_EARLY_RESIDUAL", "0") == "1":
+            x = x.contiguous()
 
         for i, block in enumerate(self.blocks):
             # in-context

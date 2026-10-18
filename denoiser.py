@@ -3,6 +3,11 @@ import os
 import torch.nn as nn
 from model_jit import JiT_models
 
+if os.environ.get("JIT_COMPILE_DENOISER", "0") == "1":
+    import torch._inductor.config as inductor_config
+    inductor_config.fallback_random = True
+    print("JIT_COMPILE_DENOISER enabled: preserve ATen random operators with fallback_random")
+
 
 class Denoiser(nn.Module):
     def __init__(
@@ -47,6 +52,8 @@ class Denoiser(nn.Module):
         z = torch.randn(n, device=device) * self.P_std + self.P_mean
         return torch.sigmoid(z)
 
+    @torch.compile(mode="reduce-overhead",
+                   disable=os.environ.get("JIT_COMPILE_DENOISER", "0") != "1")
     def forward(self, x, labels):
         labels_dropped = self.drop_labels(labels) if self.training else labels
 

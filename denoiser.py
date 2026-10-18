@@ -127,6 +127,14 @@ class Denoiser(nn.Module):
     @torch.no_grad()
     def update_ema(self):
         source_params = list(self.parameters())
+        if os.environ.get("JIT_FOREACH_EMA", "0") == "1":
+            # Keep the reference's rounded multiply followed by alpha-add.
+            # Batch launches without changing either EMA's parameter coverage.
+            torch._foreach_mul_(self.ema_params1, self.ema_decay1)
+            torch._foreach_add_(self.ema_params1, source_params, alpha=1 - self.ema_decay1)
+            torch._foreach_mul_(self.ema_params2, self.ema_decay2)
+            torch._foreach_add_(self.ema_params2, source_params, alpha=1 - self.ema_decay2)
+            return
         for targ, src in zip(self.ema_params1, source_params):
             targ.detach().mul_(self.ema_decay1).add_(src, alpha=1 - self.ema_decay1)
         for targ, src in zip(self.ema_params2, source_params):

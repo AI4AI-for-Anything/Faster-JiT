@@ -1,0 +1,32 @@
+{
+  "hardware": "2 H200-class GPUs (Hopper, sm_90, about 140 GiB each); 128 images per GPU (global batch 256); BF16 autocast with FP32 master weights, AdamW states and both EMAs; no FP8",
+  "workload": "JiT-B/16, ImageNet 256x256, upstream main_jit.py recipe with 2 instead of 8 GPUs",
+  "scope": "Every row is a full check: reference -> candidate -> reference in independent processes, followed by the numerical gates. Rows are cumulative configurations, not isolated ablations. 'bench' says which version of the frozen check judged the row: 'original' (before the EMA-check revision at round 26) or 'revised'. Rows with compiled_ema=true used a compiled EMA update that later failed the revised EMA semantic check; round 26 replaced it with a foreach EMA update and kept the other changes. speedup = mean of the two reference runs / candidate; each run reports the median of three 30-step windows.",
+  "rows": [
+    {"round": 1,  "commit": "081d45e", "label": "Flash SDPA attention", "bench": "original", "compiled_ema": false, "reference_ms": 100.13, "candidate_ms": 80.39, "speedup": 1.2456, "check": "runs/opt_r01_check_flash/check.json"},
+    {"round": 5,  "commit": "dadd8bc", "label": "Whole-model compile + CUDA graphs", "bench": "original", "compiled_ema": false, "reference_ms": 100.52, "candidate_ms": 78.83, "speedup": 1.2751, "check": "runs/opt_r05_check_model_graph/check.json"},
+    {"round": 8,  "commit": "14e2b7a", "label": "Fused QK norm + RoPE kernel", "bench": "original", "compiled_ema": false, "reference_ms": 100.19, "candidate_ms": 76.36, "speedup": 1.3120, "check": "runs/opt_r08_check_fused_qk_tile16/check.json"},
+    {"round": 13, "commit": "c67dd25", "label": "Compiled EMA (later withdrawn)", "bench": "original", "compiled_ema": true, "withdrawn": true, "reference_ms": 99.94, "candidate_ms": 74.30, "speedup": 1.3451, "check": "runs/opt_r13_check_ema_graph/check.json"},
+    {"round": 14, "commit": "5b4df63", "label": "FlexAttention", "bench": "original", "compiled_ema": true, "reference_ms": 100.43, "candidate_ms": 71.94, "speedup": 1.3960, "check": "runs/opt_r14_check_flex/check.json"},
+    {"round": 16, "commit": "036756d", "label": "BF16 in-context tokens", "bench": "original", "compiled_ema": true, "reference_ms": 100.24, "candidate_ms": 69.53, "speedup": 1.4417, "check": "runs/opt_r16_check_bf16_context/check.json"},
+    {"round": 17, "commit": "dda944d", "label": "Fused AdamW", "bench": "original", "compiled_ema": true, "reference_ms": 99.84, "candidate_ms": 67.25, "speedup": 1.4847, "check": "runs/opt_r17_check_fused_adamw/check.json", "revised_check": "INCORRECT (EMA semantics): runs/ema_guard_revision_01/best_recheck/check.json"},
+    {"round": 26, "commit": "9a2a498", "label": "Foreach EMA replaces compiled EMA", "bench": "revised", "compiled_ema": false, "reference_ms": 99.89, "candidate_ms": 67.22, "speedup": 1.4860, "check": "runs/opt_r26_check_foreach_ema/check.json"},
+    {"round": 35, "commit": "c3a51f9", "label": "Contiguous early residual", "bench": "revised", "compiled_ema": false, "reference_ms": 99.97, "candidate_ms": 66.51, "speedup": 1.5032, "check": "runs/opt_r35_check_residual_layout/check.json"},
+    {"round": 37, "commit": "a5fa4a3", "label": "Fused SwiGLU + bias gradient", "bench": "revised", "compiled_ema": false, "reference_ms": 100.37, "candidate_ms": 65.61, "speedup": 1.5298, "check": "runs/opt_r37_check_swiglu_bias/check.json"},
+    {"round": 47, "commit": "332e101", "label": "Compiled outer denoiser", "bench": "revised", "compiled_ema": false, "reference_ms": 100.05, "candidate_ms": 64.63, "speedup": 1.5480, "check": "runs/opt_r46_check_outer_denoiser/check.json", "note": "full check run in round 46; the increment was confirmed with paired timings in round 47 before the commit"},
+    {"round": 53, "commit": "19b7549", "label": "Inductor coordinate-descent tuning", "bench": "revised", "compiled_ema": false, "reference_ms": 100.02, "candidate_ms": 64.04, "speedup": 1.5618, "check": "runs/opt_r53_check_pointwise_tune_retry1/check.json", "note": "the first full check of this configuration was INVALID (timing-window spread 28%) and was rerun"}
+  ],
+  "final": {
+    "commit": "19b7549",
+    "reference_runs_ms": [100.06, 99.98],
+    "candidate_windows_ms": [64.04, 69.61, 63.96],
+    "reference_windows_ms": {"ref_a": [100.06, 100.03, 100.61], "ref_b": [100.15, 99.98, 99.84]},
+    "candidate_window_spread": 0.0882,
+    "reference_spread": 0.0008,
+    "peak_memory_allocated_gib": {"reference": 25.84, "candidate": 17.73},
+    "startup_to_first_step_s": {"reference": 54.1, "candidate": 194.2},
+    "images_per_s_both_gpus": {"reference": 2558.5, "candidate": 3997.5}
+  },
+  "rounds_total": 67,
+  "rounds_accepted": 12
+}

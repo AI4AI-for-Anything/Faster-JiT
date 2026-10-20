@@ -1,0 +1,20 @@
+{
+  "source": "Nsight Systems profile of the final configuration (commit 19b7549): 30 training steps on each of 2 GPUs after warm-up, CUDA-graph kernels traced per node. Values are summed kernel durations per GPU per step. Kernels can overlap (communication partly overlaps compute) and the profiler adds host overhead, so the sum is not a step time.",
+  "kernel_ms_per_gpu_step": {
+    "GEMM": 25.92,
+    "Inductor pointwise / reduction": 9.53,
+    "FlexAttention": 7.34,
+    "Fused QK norm + RoPE": 5.13,
+    "Fused SwiGLU + bias gradient": 4.13,
+    "Communication (NCCL)": 2.98,
+    "AdamW + EMA": 2.73,
+    "Other": 1.97
+  },
+  "kernel_union_ms_per_gpu_step": [58.86, 59.0],
+  "gemm_ms_range_across_final_profiles": [25.2, 25.9],
+  "gemm_flops_per_gpu_step": 1.828e13,
+  "gemm_flops_note": "Forward + backward (3x forward) FLOPs of all linear and patch-embedding layers of JiT-B/16 for 128 images: 4 blocks x 256 tokens + 8 blocks x 288 tokens (32 in-context tokens). Attention score/value products run inside FlexAttention and are not counted.",
+  "bf16_matmul_peak_tflops": 783,
+  "bf16_matmul_peak_note": "Large BF16 torch.matmul microbenchmark on the same GPU model before the optimization run.",
+  "step_ms": {"reference": 100.02, "faster_jit": 64.04, "target_2x": 50.01, "target_3x": 33.34}
+}

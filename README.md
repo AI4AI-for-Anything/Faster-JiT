@@ -54,7 +54,18 @@ The final configuration passed the full check: structural and exact-item checks 
 | 200–250 | −0.75 | ✓ |
 | 250–300 | +0.04 | ✓ |
 
-See the [validation method](docs/training.md#validation). Full 600-epoch training and FID have not been evaluated; the **1.56×** result measures training-step speed.
+See the [validation method](docs/training.md#validation).
+
+### 40-epoch FID
+
+Both arms were trained for 40 epochs with the upstream JiT-B/16 recipe on 8 Hopper GPUs (128 images per GPU, global batch 1024) and scored with the upstream online evaluation: 50,000 samples from the first EMA, CFG 2.9, FID and IS against `fid_stats/jit_in256_stats.npz`. Both runs used the same machine, environment, data and command; only the code tree and switches differed. Faster-JiT also sampled with its switches on.
+
+| Implementation | FID-50K ↓ | IS ↑ |
+|---|---:|---:|
+| Reference | 39.07 | 45.86 |
+| Faster-JiT | 39.24 | 46.55 |
+
+Each arm was run once, so run-to-run variance was not measured; the two FIDs differ by 0.17. The paper reports results at 200 and 600 epochs and no 40-epoch number, so only the two arms here are compared. This run used PyTorch 2.7.1 + CUDA 12.6, not the PyTorch 2.8.0 stack of the timing check. Full 600-epoch training has not been run; the **1.56×** result measures training-step speed.
 
 ## Why it stopped at 1.56×
 

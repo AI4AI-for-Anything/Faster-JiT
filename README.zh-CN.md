@@ -54,7 +54,18 @@ bash scripts/train_faster_jit_b16.sh
 | 200–250 | −0.75 | ✓ |
 | 250–300 | +0.04 | ✓ |
 
-详见[验证方法](docs/training.md#validation)。完整的 600 个 epoch 训练和 FID 尚未评测；**1.56×** 指训练步速度的提升。
+详见[验证方法](docs/training.md#validation)。
+
+### 40 个 epoch 的 FID
+
+两边都在 8 张 Hopper GPU 上按上游 JiT-B/16 配方训练 40 个 epoch（每卡 128，全局 batch 1024），再用上游的在线评测打分：从第一个 EMA 采样 5 万张，CFG 2.9，对 `fid_stats/jit_in256_stats.npz` 算 FID 和 IS。两次运行的机器、环境、数据和命令都相同，只有代码树和开关不同；Faster-JiT 采样时也开着开关。
+
+| 实现 | FID-50K ↓ | IS ↑ |
+|---|---:|---:|
+| 参考实现 | 39.07 | 45.86 |
+| Faster-JiT | 39.24 | 46.55 |
+
+每边只跑了一次，没有测运行间的波动；两边 FID 相差 0.17。论文只给了 200 和 600 个 epoch 的结果，没有 40 个 epoch 的数字，所以这里只比较两边。这次运行用的是 PyTorch 2.7.1 + CUDA 12.6，不是测速判卷时的 PyTorch 2.8.0。完整的 600 个 epoch 训练尚未运行；**1.56×** 指训练步速度的提升。
 
 ## 为什么停在 1.56×
 

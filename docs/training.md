@@ -57,7 +57,7 @@ bash scripts/train_faster_jit_b16.sh            # NPROC=8 by default, 128 images
 
 The script sources the switches and runs the upstream JiT-B/16 command (600 epochs, 5 warm-up epochs, `blr 5e-5`,
 learning rate scaled by the global batch). Extra arguments are passed to `main_jit.py`. `--online_eval` is not added
-by default: online FID evaluation and sampling were not exercised with the switches.
+by default; the [40-epoch FID run](#40-epoch-fid) added it and sampled with the switches on (PyTorch 2.7.1).
 
 At start-up, the enabled switches print a line (for example `JIT_COMPILE_DENOISER enabled ...`). A fused path that
 cannot handle its input prints a line containing `fallback` and runs the upstream code instead. Before trusting a
@@ -175,12 +175,33 @@ and the foreach EMA update passed.
 
 Limits of this evidence:
 
-- The trajectories cover 300 post-warm-up steps and the training loss only; full 600-epoch training and FID have
-  not been run.
+- The trajectories cover 300 post-warm-up steps and the training loss only. Beyond the check, a paired 40-epoch run
+  measured FID (below); full 600-epoch training has not been run.
 - Numerical recording runs in deterministic mode. In that mode two CUDA-graph captures in the FlexAttention path are
   skipped; the timed runs had no skips. The numerical verdict covers the deterministic execution path.
 - Allowed precision changes were local (BF16 rounding inside attention, the in-context tokens and fused kernels).
   FP8 was not allowed and is not used; master weights, AdamW states and both EMAs stay FP32.
+
+### 40-epoch FID
+
+Outside the check, both arms were trained for 40 epochs and scored with the upstream online evaluation:
+
+- Recipe: upstream JiT-B/16 command with `--epochs 40 --online_eval` (8 GPUs, 128 images per GPU, global batch
+  1024, `blr 5e-5`, 5 warm-up epochs, default seed). The two runs used the same machine, environment, data and
+  command; only the code tree (upstream vs. this repository) and the switches in `scripts/configs/faster.env`
+  differed. `TORCH_LOGS=+inductor` was left off.
+- Evaluation: 50,000 samples from the first EMA, CFG 2.9, interval [0.1, 1.0], FID and IS from the LTH14
+  torch-fidelity fork against `fid_stats/jit_in256_stats.npz`. Faster-JiT sampled with its switches on.
+- Environment: 8 Hopper GPUs (80 GB), PyTorch 2.7.1 + CUDA 12.6. This differs from the PyTorch 2.8.0 + CUDA 12.8
+  stack of the timing check.
+
+| Implementation | FID-50K ↓ | IS ↑ |
+|---|---:|---:|
+| Reference | 39.07 | 45.86 |
+| Faster-JiT | 39.24 | 46.55 |
+
+Each arm was run once, so run-to-run variance was not measured; the two FIDs differ by 0.17. The paper reports
+200- and 600-epoch results only, so these 40-epoch numbers are compared with each other, not with the paper.
 
 ## Optimization history
 

@@ -143,7 +143,16 @@ def main(args):
         transforms.PILToTensor()
     ])
 
-    dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
+    dataset_train = None
+    if os.environ.get("JIT_CROP_CACHE", "0") == "1":
+        # Precomputed center crops (util/crop_cache.py, built with util/crop.py); the random horizontal flip is still
+        # drawn per sample in the DataLoader workers, so the batches are bitwise identical to the pipeline below.
+        from util.crop_cache import open_cached_train_set
+        dataset_train = open_cached_train_set(os.path.join(args.data_path, 'train'),
+                                              os.environ.get("CROP_CACHE_PATH", ""), args.img_size,
+                                              transforms.RandomHorizontalFlip())
+    if dataset_train is None:
+        dataset_train = datasets.ImageFolder(os.path.join(args.data_path, 'train'), transform=transform_train)
     print(dataset_train)
 
     sampler_train = torch.utils.data.DistributedSampler(

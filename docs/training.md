@@ -2,9 +2,10 @@
 
 The optimizations are environment switches on the upstream trainer (`main_jit.py`). Every `JIT_*` switch is off unless
 set; with none set, the code runs the upstream path. The measured configuration is
-[`scripts/configs/faster.env`](../scripts/configs/faster.env) (identical values in
+[`scripts/configs/faster.env`](../scripts/configs/faster.env). Its model-side switch values match
 [`.harness/config.json`](../.harness/config.json) and
-[`optimizations/flex_pointwise_tune.json`](../optimizations/flex_pointwise_tune.json)).
+[`optimizations/flex_pointwise_tune.json`](../optimizations/flex_pointwise_tune.json); it additionally enables the
+[verified input cache](#exact-center-crop-cache-for-eight-gpus).
 
 ## Environment
 
@@ -46,6 +47,45 @@ $IMAGENET_PATH/
 ```
 
 No images, checkpoints or FID statistics beyond the upstream `fid_stats/` files are added by this repository.
+
+## Exact center-crop cache for eight GPUs
+
+The optional `JIT_CROP_CACHE=1` path stores the deterministic output of the existing Pillow loader and
+`util/crop.py` once, as uncompressed HWC uint8. It does not change JPEG decoding, BOX/BICUBIC resizing or pixel
+values. Training still runs `RandomHorizontalFlip` per sample, using the same worker RNG draws. Sampler order,
+12 workers per rank, batching, pinning, and GPU float32 normalization stay unchanged. Do not change worker count
+when reproducing exact batches: that changes which worker draws each flip.
+
+Build and verify on local disk, from the repository root, using the same environment as training:
+
+```bash
+export IMAGENET_PATH=/path/to/imagenet
+export CROP_CACHE_PATH=/path/to/local/crop-cache
+python -m util.crop_cache build --data_path "$IMAGENET_PATH" --cache_path "$CROP_CACHE_PATH" --workers 120
+python -m util.crop_cache verify --data_path "$IMAGENET_PATH" --cache_path "$CROP_CACHE_PATH" --full --workers 120
+```
+
+The full ImageNet-1k train cache (1,281,167 images at 256×256) uses **234.6 GiB** for crops plus 9.8 MiB for labels.
+On the measured 128-core, 1 TiB RAM host, building it took **308.3 s**, and full verification took **131.7 s**.
+Both operations are CPU-only; run them before training or timing. The builder refuses to overwrite an existing
+cache and requires at least 200 GB of disk space to remain free. Use a new empty directory to rebuild.
+
+`verify --full` recomputes **every** crop through the original pipeline, compares every byte and label, and checks
+all cache chunk hashes. A sample-only check does not authorize training. Full verification writes a receipt;
+training requires it and checks file identity, dataset order, crop source, Pillow/NumPy versions, labels and four
+reference crops without consuming augmentation RNG. Keep the source dataset and cache immutable after verification.
+Rebuild and reverify after any source-data, crop-code or environment change; file identity checks are not a substitute
+for immutable data. Verification hashes and data paths remain local.
+
+The measured configuration in `scripts/configs/faster.env` enables `JIT_CROP_CACHE=1`; export `CROP_CACHE_PATH`
+before using the launcher. With a missing, stale or unverified cache the trainer prints `JIT_CROP_CACHE fallback`
+and uses the original ImageFolder pipeline. Such a run does not qualify for cached-input timing. Without any
+switches, the original pipeline is unchanged. To disable caching after sourcing the configuration, use
+`export JIT_CROP_CACHE=0` before invoking `main_jit.py` directly.
+
+The measured cache fits in host memory and is served through the OS page cache. The same throughput is not promised
+with less RAM, remote storage or cold storage reads. This cache only covers the training center crop; random
+augmentation and the training recipe remain online.
 
 ## Launch
 

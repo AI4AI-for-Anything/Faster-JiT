@@ -25,6 +25,37 @@ bash scripts/train_faster_jit_b16.sh
 
 Equivalently, `source scripts/configs/faster.env` and use the upstream `torchrun ... main_jit.py` command. Tested with **PyTorch 2.8.0 + CUDA 12.8 on Hopper GPUs**. With no switch set, the code runs the upstream path.
 
+## 8-GPU input pipeline
+
+**Validation is incomplete:** two default shorttrain attempts failed the restored step-0 loss-bit gate, despite
+identical inputs and successful resume. The timings below pass; this branch is not yet accepted for publication.
+
+A separate full-ImageNet check on **8 NVIDIA L20Z GPUs**, 128 images per GPU (global batch 1024), removes the
+input bottleneck by caching the **exact original Pillow center crops**. Model-side switches and training recipe
+are unchanged; this comparison is against the existing Faster-JiT live pipeline, separate from the two-GPU 1.56× result.
+
+| Input pipeline | Session 1: ms/step (images/s) | Session 2: ms/step (images/s) |
+|---|---:|---:|
+| Existing live | 102.48 (9,992) | 101.39 (10,100) |
+| Verified crop cache | 71.31 (14,360) | 70.39 (14,548) |
+| Preload diagnostic floor | 71.11 (14,401) | 70.09 (14,610) |
+
+Each session uses live reference → cache → live reference → preload, with 200 warm-up steps and five 100-step
+windows. The existing-live number is the mean of the two live medians; throughput covers all eight GPUs. Cache vs
+preload: **+0.28% / +0.42%**; cache window ranges: **2.19% / 1.94%**. Both sessions pass the 3% proximity and 3% jitter gates.
+
+The cache uses **234.6 GiB**, took **308.3 s** to build and **131.7 s** to verify all 1,281,167 reference crops
+byte for byte. Full batches passed 576/576 rank-step pairs, including an epoch boundary. Both 1600-step short trains
+plus 100 resumed steps match inputs at every step on all ranks (13,600 pairs per invocation). Initial loss bits
+match in phase A but differ in phase B, so the complete shorttrain gate fails. Training itself remains nondeterministic; no new full-training or FID claim is made.
+Checkpoint resume also passed with the PyTorch load-workaround variable removed. A separate complete deterministic
+shorttrain passes, but its execution path differs and it does not satisfy the required default-mode gate.
+
+For this throughput, [build and fully verify the cache](docs/training.md#exact-center-crop-cache-for-eight-gpus),
+then export `CROP_CACHE_PATH` before launching. `faster.env` enables `JIT_CROP_CACHE=1`; missing or stale caches
+print `fallback` and use the original pipeline. The measured cache fits in host RAM; performance with less RAM or
+cold storage reads is not established. See [method and validation](docs/training.md#8-gpu-input-pipeline-results).
+
 ## Agent Optimization History
 
 Each point is a full check on two H200-class GPUs with 128 images per GPU.
@@ -44,7 +75,7 @@ See the [switch table](docs/training.md#switches) and the [measured configuratio
 
 ## Validation
 
-The final configuration passed the full check: structural and exact-item checks (recipe, data, random-number fingerprints, call counts, learning rates), an isolated EMA check (4 steps × 366 tensors, bitwise identical to the reference update) and, because 1,574 of 8,760 recorded tensors were bitwise identical rather than all, a statistical check. That check ran 300 post-warm-up training steps with three paired seeds; the tolerance δ is twice the reference's own seed-to-seed standard deviation of each loss window.
+The two-GPU model configuration passed the full check: structural and exact-item checks (recipe, data, random-number fingerprints, call counts, learning rates), an isolated EMA check (4 steps × 366 tensors, bitwise identical to the reference update) and, because 1,574 of 8,760 recorded tensors were bitwise identical rather than all, a statistical check. That check ran 300 post-warm-up training steps with three paired seeds; the tolerance δ is twice the reference's own seed-to-seed standard deviation of each loss window.
 
 | Loss window (steps) | Mean difference / reference σ | Within δ = 2σ |
 |---|---:|:---:|

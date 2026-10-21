@@ -23,7 +23,8 @@ The benchmark ran on Hopper GPUs (compute capability 9.0, about 140 GiB each) wi
 | torch-fidelity | 0.4.0 ([LTH14 fork](https://github.com/LTH14/torch-fidelity), used by upstream for FID) |
 
 The upstream `environment.yaml` pins PyTorch 2.5.1. The switches use FlexAttention, `torch.library.custom_op` and
-Inductor options and were only tested with PyTorch 2.8.0. One way to build a matching environment:
+Inductor options. The original two-GPU timing used PyTorch 2.8.0; the separate eight-GPU input check below uses
+PyTorch 2.7.1. One way to build the original timing environment:
 
 ```bash
 conda create -n faster-jit python=3.10 -y
@@ -126,6 +127,7 @@ measured runs had none.
 | `JIT_SWIGLU_BIAS_FUSION=1` | Triton SwiGLU forward/backward that also produces the `w12` bias gradient from per-tile FP32 partials (fixed reduction, no atomics). Guarded to batch 128, 256 or 288 tokens, width 768, BF16 autocast. | `util/fused_swiglu_bias.py`, `model_jit.py` | R37 | Different bias-reduction grouping |
 | `JIT_COMPILE_DENOISER=1` | Compiles the outer `Denoiser.forward` (noise sampling and loss) with CUDA graphs. Inductor `fallback_random` keeps the ATen random operators. | `denoiser.py` | R47 | RNG fingerprints checked exactly |
 | `TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE=1`, `TORCHINDUCTOR_COORDINATE_DESCENT_TUNING=1` | Stock Inductor tuning of pointwise and reduction kernels at compile time. | — | R53 | Kernel configuration only |
+| `JIT_CROP_CACHE=1` | Reads fully verified original center crops from `CROP_CACHE_PATH`; keeps per-worker flip RNG and original batching. Missing/stale caches print `fallback`. | `main_jit.py`, `util/crop_cache.py` | 2026-10-21 | Bitwise-identical model inputs |
 | `TORCH_LOGS=+inductor` | Logging only; set in the measured run to record the tuning choices. | — | R53 | None |
 
 "Not bitwise" means that the change alone is not claimed to reproduce the reference bit for bit. The numerical
@@ -134,6 +136,71 @@ verdict applies to the combined configuration; see [validation](#validation).
 `optimizations/*.json` keeps the configuration of every adopted step. Four of them
 (`fused_qk_ema_graph.json`, `flex_fused_qk_ema_graph.json`, `flex_bf16_context.json`, `flex_context_fused_adamw.json`)
 set `JIT_COMPILE_EMA=1` and therefore do not pass the revised check; they are kept only to reproduce the history.
+
+## 8-GPU input pipeline results
+
+Measured 2026-10-21 on eight NVIDIA L20Z GPUs (81,559 MiB each), 128 CPU cores and 1 TiB RAM. The workload is
+full ImageNet-1k train, JiT-B/16 at 256×256, 128 images per rank / global batch 1024, default 12 workers per rank,
+and the same 12 model-side switches and two Inductor flags. No FP8, FP16, optimizer or recipe change. Software:
+Python 3.12.12, PyTorch 2.7.1+cu126, torchvision 0.22.1+cu126, Triton 3.3.1, Pillow 11.3.0, NumPy 1.26.4.
+The input-cache source is `1ba75aa`, with the separate trusted-checkpoint resume fix in `bff0913`.
+
+CPU attribution identified PIL decode, BOX/BICUBIC resize and center crop as the bottleneck. The change caches
+only those deterministic results; horizontal flips still draw once per sample in the original worker assignment.
+Changing worker count is not equivalent: a 16-worker negative control changed flips from batch 12 onward.
+
+Two independent frozen-bench sessions run reference live → candidate live → reference live → reference preload.
+Each arm starts with fresh compile caches, warms up for 200 steps, then measures five consecutive 100-step windows
+with synchronized boundaries and no profiler. Each window uses the slowest rank. Startup, compile, checkpoints
+and epoch transitions are excluded. Preload cycles 64 real augmented batches as a diagnostic floor; the candidate
+continues sampling the real dataset. Before = mean of the two reference-live median windows.
+
+| Session | Before (ms) | Cache (ms) | Preload (ms) | Cache vs preload | Cache window range | Live speedup |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 102.48 | 71.31 | 71.11 | +0.28% | 2.19% | 1.437× |
+| 2 | 101.39 | 70.39 | 70.09 | +0.42% | 1.94% | 1.440× |
+
+Both sessions are valid and pass both 3% targets. All timing windows have zero compilations, the expected
+optimizer/EMA counts, and no fallback, skipped-CUDA-graph or recompile-limit signatures. The first session's
+worst-rank window-mean loader wait drops from 33.39 ms to 0.29 ms; the longest wait drops from 620.49 ms to 0.83 ms.
+This result is separate from the original two-GPU model-optimization benchmark and from time-to-FID.
+
+Input validation uses the frozen observer at the DDP forward boundary: float32 normalized images and int64 labels,
+including shape, dtype and stride. Full batches pass all 576 selected rank-step SHA256 pairs across an epoch
+boundary. Both default shorttrain attempts run 1600 fresh steps (one full epoch plus 349 steps) and 100 resumed steps on all
+eight ranks: every input checksum matches and both trees restore the candidate's epoch-0 checkpoint, but the
+complete gate FAILS because phase-B step-0 loss bits differ. Phase-A step-0 loss bits match. Resumed sampler labels match uninterrupted epoch 1. Both EMAs and AdamW state are
+included in checkpoint verification; protected model/loss/kernel/schedule sources remain unchanged.
+
+Losses and final training states are not bitwise reproducible on this stack, even for unchanged code. Here the
+first phase-A loss mismatch is at step 11; maximum absolute rank-mean loss differences
+are 0.016902201 (phase A) and 0.0075864429 (phase B). The frozen reference-vs-reference
+phase-A maximum is 0.019957064.
+See the [dated aggregate evidence](experiments/2026-10-21-input-pipeline/summary.json) for all timing windows and
+per-100-step mean/max loss differences alongside the reference band. The exact crop and input checks establish the
+input contract; protected sources are unchanged. The restored initial-loss gate remains unresolved.
+Both default shorttrain attempts failed the phase-B step-0 loss gate, despite identical inputs and successful resume.
+Repeating the unchanged reference phase B with the exact same checkpoint and shared compile cache also changed
+initial loss bits on four ranks. The backend cause is not isolated. The failure and reference-self comparison are
+retained in the aggregate evidence. An unchanged full rerun also fails. A full reference-vs-reference control
+returns shorttrain_pass=True. The exact cause must be resolved
+with the frozen benchmark owner before acceptance; no gate is relaxed and no precision or pixel value is changed. No new long-training or quality result is claimed.
+
+A complete diagnostic with the frozen bench's existing `--deterministic` option **passes** all 1600 + 100 steps:
+inputs, both initial losses and resume checks agree. Phase-A losses first differ at step 56; maximum absolute
+rank-mean differences are 0.014552632 (A) and 0.004941608 (B). This mode sets deterministic algorithms and the cuBLAS
+workspace configuration. Each arm logs eight CUDA-graph skips, unlike the default runs, so this diagnostic does
+not establish default-path numerical acceptance or performance. The required default shorttrain verdict remains
+failed; accepting a different validation mode requires the frozen benchmark owner's decision.
+
+The frozen shorttrain bench injects `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` for its reference arm. The candidate uses
+explicit `weights_only=False`, so it does not need that workaround. An additional 100-step candidate phase-B replay
+through the same frozen observer, same checkpoint and shared compile cache removes the environment variable and
+completes on all ranks with identical inputs versus the original candidate phase B. Its initial loss bits differ;
+that additional replay proves resume compatibility, while the complete default shorttrain gate is checked separately.
+
+The benchmark harness and raw artifacts remain external to this repository. The repository provides the cache
+builder/verifier, CPU regression test (`python -m unittest discover -s tests`) and the aggregate evidence above.
 
 ## Memory and compile time
 

@@ -609,7 +609,8 @@
     "reference_self_repeat": {
       "inputs_bitwise_equal": true,
       "step0_loss_bitwise": false,
-      "note": "Identical source/checkpoint/input/shared compile cache still changed first-forward loss bits; exact backend cause unproven. Full default shorttrain rerun without source or recipe changes."
+      "note": "Identical source/checkpoint/inputs/shared compile cache still changed initial loss bits on four ranks. This also occurs in the unchanged reference, independently of the input-cache change; exact backend cause unproven.",
+      "initial_loss_mismatch_ranks": 4
     },
     "full_reference_self_control": {
       "shorttrain_pass": true,
@@ -760,15 +761,30 @@
           ]
         }
       },
-      "acceptance": "Diagnostic only: GOAL requires default settings; this run has CUDA-graph skips and is not default-path acceptance."
+      "acceptance": "Accepted for numerical validation by benchmark-owner decision on 2026-10-21, together with both default-mode input/resume checks and full batches on the final commit. CUDA-graph skips differ from default mode; performance comes only from the default paired timings."
     }
   },
-  "acceptance_status": "Incomplete: both candidate shorttrain invocations failed the restored step-0 loss-bit gate; no gate was relaxed.",
+  "acceptance_status": "Accepted under the benchmark-owner decision of 2026-10-21: two default input/resume checks, complete deterministic-mode shorttrain PASS, and full batches PASS. The frozen benchmark and its two default shorttrain FAIL verdicts are unchanged.",
   "limitations": [
     "This compares cached inputs to the existing Faster-JiT live inputs with the same model-side switches; separate from the two-GPU 1.56x result.",
     "The 234.6 GiB cache fits in host memory on this machine; lower-memory or cold/remote-storage throughput is not established.",
-    "Only inputs are bitwise identical. Unchanged-code backward reductions and some restored first-forward losses are not bitwise reproducible; one shorttrain attempt failed its phase-B initial-loss gate. No new full-training or FID claim.",
+    "Only inputs are bitwise identical. The existing framework stack is nondeterministic even for unchanged reference code: later losses/final states and some restored initial losses differ. Both default shorttrain verdicts fail the initial-loss check; combined numerical acceptance follows the benchmark-owner decision. Exact backend cause unproven. No new full-training or FID claim.",
     "The frozen bench injects the checkpoint-load workaround in its four shorttrain arms. An additional candidate phase-B replay removes it and passes.",
     "The benchmark harness and raw runtime artifacts are external to this repository."
-  ]
+  ],
+  "acceptance_decision": {
+    "date": "2026-10-21",
+    "authority": "benchmark owner",
+    "reason": "The default phase-B initial-loss-bit check is not reliably reproducible even for unchanged reference source/checkpoint/inputs/shared compile cache.",
+    "required_evidence": {
+      "default_shorttrain_invocations": 2,
+      "input_rank_step_pairs_each": 13600,
+      "default_inputs_bitwise_equal": true,
+      "default_resume_ok": true,
+      "deterministic_shorttrain_pass": true,
+      "full_batches_pass": true
+    },
+    "frozen_judge_modified": false,
+    "raw_default_shorttrain_verdicts_modified": false
+  }
 }

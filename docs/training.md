@@ -168,8 +168,9 @@ This result is separate from the original two-GPU model-optimization benchmark a
 Input validation uses the frozen observer at the DDP forward boundary: float32 normalized images and int64 labels,
 including shape, dtype and stride. Full batches pass all 576 selected rank-step SHA256 pairs across an epoch
 boundary. Both default shorttrain attempts run 1600 fresh steps (one full epoch plus 349 steps) and 100 resumed steps on all
-eight ranks: every input checksum matches and both trees restore the candidate's epoch-0 checkpoint, but the
-complete gate FAILS because phase-B step-0 loss bits differ. Phase-A step-0 loss bits match. Resumed sampler labels match uninterrupted epoch 1. Both EMAs and AdamW state are
+eight ranks: every input checksum matches (13,600 rank-step pairs per invocation) and both trees restore the
+candidate's epoch-0 checkpoint. Phase-A step-0 loss bits match; phase-B step-0 bits differ, so the original default
+shorttrain verdicts remain false. Resumed sampler labels match uninterrupted epoch 1. Both EMAs and AdamW state are
 included in checkpoint verification; protected model/loss/kernel/schedule sources remain unchanged.
 
 Losses and final training states are not bitwise reproducible on this stack, even for unchanged code. Here the
@@ -178,26 +179,37 @@ are 0.016902201 (phase A) and 0.0075864429 (phase B). The frozen reference-vs-re
 phase-A maximum is 0.019957064.
 See the [dated aggregate evidence](experiments/2026-10-21-input-pipeline/summary.json) for all timing windows and
 per-100-step mean/max loss differences alongside the reference band. The exact crop and input checks establish the
-input contract; protected sources are unchanged. The restored initial-loss gate remains unresolved.
-Both default shorttrain attempts failed the phase-B step-0 loss gate, despite identical inputs and successful resume.
-Repeating the unchanged reference phase B with the exact same checkpoint and shared compile cache also changed
-initial loss bits on four ranks. The backend cause is not isolated. The failure and reference-self comparison are
-retained in the aggregate evidence. An unchanged full rerun also fails. A full reference-vs-reference control
-returns shorttrain_pass=True. The exact cause must be resolved
-with the frozen benchmark owner before acceptance; no gate is relaxed and no precision or pixel value is changed. No new long-training or quality result is claimed.
+input contract; protected sources are unchanged.
 
-A complete diagnostic with the frozen bench's existing `--deterministic` option **passes** all 1600 + 100 steps:
+Repeating the unchanged reference phase B with identical source, checkpoint, inputs and shared compile cache also
+changed initial loss bits on four ranks. A separate full reference-vs-reference control passes, so the default
+restored-loss check is not reliably reproducible. This nondeterminism is present in the existing framework stack,
+independent of the input-cache change; the exact backend cause is not isolated. Both failed default verdicts and
+the reference-self controls are retained in the aggregate evidence.
+
+A complete run with the frozen bench's existing `--deterministic` option **passes** all checks over 1600 + 100 steps:
 inputs, both initial losses and resume checks agree. Phase-A losses first differ at step 56; maximum absolute
 rank-mean differences are 0.014552632 (A) and 0.004941608 (B). This mode sets deterministic algorithms and the cuBLAS
-workspace configuration. Each arm logs eight CUDA-graph skips, unlike the default runs, so this diagnostic does
-not establish default-path numerical acceptance or performance. The required default shorttrain verdict remains
-failed; accepting a different validation mode requires the frozen benchmark owner's decision.
+workspace configuration. Each arm logs eight CUDA-graph skips, unlike the default runs. This is numerical
+validation for that execution mode; the two default-mode paired sessions above establish performance. A passing
+shorttrain does not mean every later loss or final state is bitwise identical.
+
+On 2026-10-21, the benchmark owner corrected the acceptance policy because the unchanged reference itself cannot
+reliably pass the default restored step-0 loss-bit check. Acceptance requires all three:
+
+1. Both default shorttrains have identical inputs on all 13,600 rank-step pairs and `resume_ok=true`.
+2. The complete deterministic-mode shorttrain passes inputs, step-0 loss bits in both phases and resume.
+3. Full batches pass on the final commit.
+
+All three are satisfied. The frozen benchmark and its raw verdicts are unchanged; the combined evidence is the
+accepted numerical result. No pixel values, precision, model-side switches or training recipe are changed, and no
+new long-training or quality result is claimed.
 
 The frozen shorttrain bench injects `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` for its reference arm. The candidate uses
 explicit `weights_only=False`, so it does not need that workaround. An additional 100-step candidate phase-B replay
 through the same frozen observer, same checkpoint and shared compile cache removes the environment variable and
 completes on all ranks with identical inputs versus the original candidate phase B. Its initial loss bits differ;
-that additional replay proves resume compatibility, while the complete default shorttrain gate is checked separately.
+that additional replay proves resume compatibility and is separate from the combined numerical acceptance above.
 
 The benchmark harness and raw artifacts remain external to this repository. The repository provides the cache
 builder/verifier, CPU regression test (`python -m unittest discover -s tests`) and the aggregate evidence above.

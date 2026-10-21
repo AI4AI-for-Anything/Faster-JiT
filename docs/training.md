@@ -99,6 +99,13 @@ The script sources the switches and runs the upstream JiT-B/16 command (600 epoc
 learning rate scaled by the global batch). Extra arguments are passed to `main_jit.py`. `--online_eval` is not added
 by default; the [40-epoch FID run](#40-epoch-fid) added it and sampled with the switches on (PyTorch 2.7.1).
 
+Resume uses `--resume /path/to/output` to read `checkpoint-last.pth`, including the model, both EMAs, optimizer and
+next epoch. These training checkpoints include `argparse.Namespace` metadata, so the trainer explicitly calls
+`torch.load(..., weights_only=False)` for trusted own checkpoints. This fixes the default `weights_only=True`
+rejection on PyTorch 2.6 and later; `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD` is not needed. Only load checkpoints you trust.
+The sampler restarts the saved epoch's successor as upstream; mid-epoch worker RNG state is not saved. Keep the
+training switches and worker count unchanged when resuming.
+
 At start-up, the enabled switches print a line (for example `JIT_COMPILE_DENOISER enabled ...`). A fused path that
 cannot handle its input prints a line containing `fallback` and runs the upstream code instead. Before trusting a
 timing, check the log for `fallback`, for `skipping cudagraphs due to` and for recompile-limit messages; the

@@ -100,7 +100,7 @@ L 342.72 100.44
     <g id="ytick_1">
      <g id="line2d_11"/>
      <g id="text_7">
-      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #79696b" x="146.52" y="144.002855" transform="rotate(-0 146.52 144.002855)">Reference</text>
+      <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #79696b" x="146.52" y="144.002855" transform="rotate(-0 146.52 144.002855)">Baseline</text>
      </g>
     </g>
     <g id="ytick_2">
@@ -154,7 +154,7 @@ z
    <text style="font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: middle; fill: #79696b" x="550.8" y="207.36" transform="rotate(-0 550.8 207.36)">full check: PASS</text>
   </g>
   <g id="text_16">
-   <text style="font-size: 9.5px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #79696b" x="38.88" y="306.18" transform="rotate(-0 38.88 306.18)">Reference → candidate → reference in independent processes; reference = mean of the two reference runs.</text>
+   <text style="font-size: 9.5px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #79696b" x="38.88" y="306.18" transform="rotate(-0 38.88 306.18)">Baseline → candidate → baseline in independent processes; baseline = mean of the two baseline runs.</text>
   </g>
  </g>
  <defs>

@@ -60,7 +60,7 @@ def hero():
              color=MUTED, fontsize=10.5)
     ax = fig.add_axes([.24, .24, .39, .45])
     ax.barh([1, 0], values, color=[LIGHT, RED], height=.24, zorder=3)
-    ax.set_yticks([1, 0], ['Reference', 'Faster-JiT'])
+    ax.set_yticks([1, 0], ['Baseline', 'Faster-JiT'])
     for y, value in zip([1, 0], values):
         ax.text(value + 2.5, y, f'{value:.2f} ms', va='center', color=INK, fontsize=11.5, weight='bold')
     ax.set_xlim(0, 135)
@@ -72,8 +72,8 @@ def hero():
     fig.text(.85, .54, f"{final['speedup']:.2f}×", color=RED, fontsize=35, weight='bold', ha='center')
     fig.text(.85, .43, 'step speedup', color=MUTED, fontsize=12, ha='center')
     fig.text(.85, .36, 'full check: PASS', color=MUTED, fontsize=10, ha='center')
-    fig.text(.06, .055, 'Reference → candidate → reference in independent processes; reference = mean of the two '
-             'reference runs.', color=MUTED, fontsize=9.5)
+    fig.text(.06, .055, 'Baseline → candidate → baseline in independent processes; baseline = mean of the two '
+             'baseline runs.', color=MUTED, fontsize=9.5)
     save(fig, ROOT / '01-benchmark')
 
 
@@ -145,7 +145,7 @@ def time_budget():
     fig = plt.figure(figsize=(9, 5.6), facecolor='white')
     fig.text(.06, .91, 'Why Faster-JiT stops at 1.56×', color=INK, weight='bold', fontsize=19)
     fig.text(.06, .845, 'Final configuration · kernel time per GPU per step (profiler) · step targets from the '
-             'full-check reference', color=MUTED, fontsize=10.2)
+             'full-check baseline', color=MUTED, fontsize=10.2)
     ax = fig.add_axes([.17, .38, .79, .36])
     ax.set_ylim(-.6, 1.45)
     ax.set_xlim(0, 105)

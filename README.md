@@ -8,10 +8,10 @@
 
 | Implementation | Time / training step (ms) ↓ | Speedup ↑ |
 |---|---:|---:|
-| Reference | 100.02 | 1.00× |
+| Baseline | 100.02 | 1.00× |
 | **Faster-JiT** | **64.04** | **1.56×** |
 
-Measured with a full check on **2 H200-class GPUs** (Hopper): JiT-B/16 on ImageNet 256×256, the upstream recipe with **128 images per GPU** (global batch 256), BF16 autocast with FP32 master weights, AdamW states and both EMAs, **no FP8**. The timer runs the repository's real `main_jit.py`; reference, candidate and reference run in independent processes, and the candidate then passed the check's numerical gates. The exact ratio is **1.5618×**. The goal was 3×; neither 3× nor the later 2× fallback was reached.
+Measured with a full check on **2 H200-class GPUs** (Hopper): JiT-B/16 on ImageNet 256×256, the upstream recipe with **128 images per GPU** (global batch 256), BF16 autocast with FP32 master weights, AdamW states and both EMAs, **no FP8**. The timer runs the repository's real `main_jit.py`, and the candidate passed the check's numerical gates. The exact ratio is **1.5618×**.
 
 ## Quick Start
 
@@ -41,14 +41,14 @@ are unchanged; this comparison is against the existing Faster-JiT live pipeline,
 | Verified crop cache | 71.31 (14,360) | 70.39 (14,548) |
 | Preload diagnostic floor | 71.11 (14,401) | 70.09 (14,610) |
 
-Each session uses live reference → cache → live reference → preload, with 200 warm-up steps and five 100-step
+Each session uses live baseline → cache → live baseline → preload, with 200 warm-up steps and five 100-step
 windows. The existing-live number is the mean of the two live medians; throughput covers all eight GPUs. Cache vs
 preload: **+0.28% / +0.42%**; cache window ranges: **2.19% / 1.94%**. Both sessions pass the 3% proximity and 3% jitter gates.
 
 The cache uses **234.6 GiB**, took **308.3 s** to build and **131.7 s** to verify all 1,281,167 reference crops
 byte for byte. Full batches passed 576/576 rank-step pairs, including an epoch boundary. Both 1600-step short trains
 plus 100 resumed steps match inputs at every step on all ranks (13,600 pairs per invocation), with successful resume.
-In default mode, even the unchanged reference cannot reliably reproduce the restored step-0 loss bits with the same
+In default mode, even the unchanged baseline cannot reliably reproduce the restored step-0 loss bits with the same
 source, checkpoint, inputs and compile cache. This is nondeterminism in the existing framework stack, independent of
 the input-cache change; the exact backend cause is not isolated. The frozen default verdicts remain recorded as
 failures of that check. The benchmark owner accepted the combined evidence on 2026-10-21.
@@ -80,9 +80,9 @@ See the [switch table](docs/training.md#switches) and the [measured configuratio
 
 ## Validation
 
-The two-GPU model configuration passed the full check: structural and exact-item checks (recipe, data, random-number fingerprints, call counts, learning rates), an isolated EMA check (4 steps × 366 tensors, bitwise identical to the reference update) and, because 1,574 of 8,760 recorded tensors were bitwise identical rather than all, a statistical check. That check ran 300 post-warm-up training steps with three paired seeds; the tolerance δ is twice the reference's own seed-to-seed standard deviation of each loss window.
+The two-GPU model configuration passed the full check: structural and exact-item checks (recipe, data, random-number fingerprints, call counts, learning rates), an isolated EMA check (4 steps × 366 tensors, bitwise identical to the baseline update) and, because 1,574 of 8,760 recorded tensors were bitwise identical rather than all, a statistical check. That check ran 300 post-warm-up training steps with three paired seeds; the tolerance δ is twice the baseline's own seed-to-seed standard deviation of each loss window.
 
-| Loss window (steps) | Mean difference / reference σ | Within δ = 2σ |
+| Loss window (steps) | Mean difference / baseline σ | Within δ = 2σ |
 |---|---:|:---:|
 | 50–100 | −0.51 | ✓ |
 | 100–150 | +0.02 | ✓ |
@@ -98,7 +98,7 @@ Both arms were trained for 40 epochs with the upstream JiT-B/16 recipe on 8 Hopp
 
 | Implementation | FID-50K ↓ | IS ↑ |
 |---|---:|---:|
-| Reference | 39.07 | 45.86 |
+| Baseline | 39.07 | 45.86 |
 | Faster-JiT | 39.24 | 46.55 |
 
 Each arm was run once, so run-to-run variance was not measured; the two FIDs differ by 0.17. The paper reports results at 200 and 600 epochs and no 40-epoch number, so only the two arms here are compared. This run used PyTorch 2.7.1 + CUDA 12.6, not the PyTorch 2.8.0 stack of the timing check. Full 600-epoch training has not been run; the **1.56×** result measures training-step speed.

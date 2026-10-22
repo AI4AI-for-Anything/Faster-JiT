@@ -257,7 +257,7 @@ z
    <text style="font-weight: 700; font-size: 19px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #292122" x="38.88" y="36.288" transform="rotate(-0 38.88 36.288)">Why Faster-JiT stops at 1.56×</text>
   </g>
   <g id="text_17">
-   <text style="font-size: 10.2px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #79696b" x="38.88" y="62.496" transform="rotate(-0 38.88 62.496)">Final configuration · kernel time per GPU per step (profiler) · step targets from the full-check reference</text>
+   <text style="font-size: 10.2px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #79696b" x="38.88" y="62.496" transform="rotate(-0 38.88 62.496)">Final configuration · kernel time per GPU per step (profiler) · step targets from the full-check baseline</text>
   </g>
   <g id="text_18">
    <text style="font-size: 9.5px; font-family: 'DejaVu Sans'; fill: #292122" transform="translate(38.88 313.788523)">Light segments, left to right (ms): Inductor pointwise / reduction 9.5 · FlexAttention 7.3 · Fused QK norm + RoPE 5.1</text>

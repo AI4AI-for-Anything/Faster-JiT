@@ -31,7 +31,7 @@ Inputs are **bitwise identical**, and the deterministic-mode shorttrain passes a
 100 resumed steps**. Numerical acceptance combines this with two default-mode input/resume checks and full batches;
 the default restored-loss reproducibility limitation is documented below.
 
-A separate full-ImageNet check on **8 NVIDIA L20Z GPUs**, 128 images per GPU (global batch 1024), removes the
+A separate full-ImageNet check on **eight 80 GB Hopper GPUs**, 128 images per GPU (global batch 1024), removes the
 input bottleneck by caching the **exact original Pillow center crops**. Model-side switches and training recipe
 are unchanged; this comparison is against the existing Faster-JiT live pipeline, separate from the two-GPU 1.56× result.
 

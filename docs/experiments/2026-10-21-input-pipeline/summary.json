@@ -5,7 +5,7 @@
   "reference_commit": "6629ce5",
   "hardware": {
     "gpus": 8,
-    "gpu": "NVIDIA L20Z",
+    "gpu": "NVIDIA Hopper (80 GB)",
     "memory_mib_per_gpu": 81559,
     "cpu_cores": 128,
     "host_memory_gib": 1024

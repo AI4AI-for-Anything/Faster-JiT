@@ -139,7 +139,7 @@ set `JIT_COMPILE_EMA=1` and therefore do not pass the revised check; they are ke
 
 ## 8-GPU input pipeline results
 
-Measured 2026-10-21 on eight NVIDIA L20Z GPUs (81,559 MiB each), 128 CPU cores and 1 TiB RAM. The workload is
+Measured 2026-10-21 on eight 80 GB Hopper GPUs (81,559 MiB each), 128 CPU cores and 1 TiB RAM. The workload is
 full ImageNet-1k train, JiT-B/16 at 256×256, 128 images per rank / global batch 1024, default 12 workers per rank,
 and the same 12 model-side switches and two Inductor flags. No FP8, FP16, optimizer or recipe change. Software:
 Python 3.12.12, PyTorch 2.7.1+cu126, torchvision 0.22.1+cu126, Triton 3.3.1, Pillow 11.3.0, NumPy 1.26.4.

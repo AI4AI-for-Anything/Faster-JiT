@@ -139,7 +139,7 @@ set `JIT_COMPILE_EMA=1` and therefore do not pass the revised check; they are ke
 
 ## 8-GPU input pipeline results
 
-Measured 2026-10-21 on eight 80 GB Hopper GPUs (81,559 MiB each), 128 CPU cores and 1 TiB RAM. The workload is
+Measured 2026-10-21 on eight NVIDIA H100 GPUs (80 GB) (81,559 MiB each), 128 CPU cores and 1 TiB RAM. The workload is
 full ImageNet-1k train, JiT-B/16 at 256×256, 128 images per rank / global batch 1024, default 12 workers per rank,
 and the same 12 model-side switches and two Inductor flags. No FP8, FP16, optimizer or recipe change. Software:
 Python 3.12.12, PyTorch 2.7.1+cu126, torchvision 0.22.1+cu126, Triton 3.3.1, Pillow 11.3.0, NumPy 1.26.4.
@@ -318,7 +318,7 @@ Outside the check, both arms were trained for 40 epochs and scored with the upst
   differed. `TORCH_LOGS=+inductor` was left off.
 - Evaluation: 50,000 samples from the first EMA, CFG 2.9, interval [0.1, 1.0], FID and IS from the LTH14
   torch-fidelity fork against `fid_stats/jit_in256_stats.npz`. Faster-JiT sampled with its switches on.
-- Environment: 8 Hopper GPUs (80 GB), PyTorch 2.7.1 + CUDA 12.6. This differs from the PyTorch 2.8.0 + CUDA 12.8
+- Environment: 8 NVIDIA H100 GPUs (80 GB), PyTorch 2.7.1 + CUDA 12.6. This differs from the PyTorch 2.8.0 + CUDA 12.8
   stack of the timing check.
 
 | Implementation | FID-50K ↓ | IS ↑ |

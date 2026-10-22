@@ -31,7 +31,7 @@ Inputs are **bitwise identical**, and the deterministic-mode shorttrain passes a
 100 resumed steps**. Numerical acceptance combines this with two default-mode input/resume checks and full batches;
 the default restored-loss reproducibility limitation is documented below.
 
-A separate full-ImageNet check on **eight 80 GB Hopper GPUs**, 128 images per GPU (global batch 1024), removes the
+A separate full-ImageNet check on **eight NVIDIA H100 GPUs (80 GB)**, 128 images per GPU (global batch 1024), removes the
 input bottleneck by caching the **exact original Pillow center crops**. Model-side switches and training recipe
 are unchanged; this comparison is against the existing Faster-JiT live pipeline, separate from the two-GPU 1.56× result.
 
@@ -94,7 +94,7 @@ See the [validation method](docs/training.md#validation).
 
 ### 40-epoch FID
 
-Both arms were trained for 40 epochs with the upstream JiT-B/16 recipe on 8 Hopper GPUs (128 images per GPU, global batch 1024) and scored with the upstream online evaluation: 50,000 samples from the first EMA, CFG 2.9, FID and IS against `fid_stats/jit_in256_stats.npz`. Both runs used the same machine, environment, data and command; only the code tree and switches differed. Faster-JiT also sampled with its switches on.
+Both arms were trained for 40 epochs with the upstream JiT-B/16 recipe on 8 NVIDIA H100 GPUs (128 images per GPU, global batch 1024) and scored with the upstream online evaluation: 50,000 samples from the first EMA, CFG 2.9, FID and IS against `fid_stats/jit_in256_stats.npz`. Both runs used the same machine, environment, data and command; only the code tree and switches differed. Faster-JiT also sampled with its switches on.
 
 | Implementation | FID-50K ↓ | IS ↑ |
 |---|---:|---:|

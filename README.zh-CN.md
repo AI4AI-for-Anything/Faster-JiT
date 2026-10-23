@@ -110,7 +110,7 @@ rank 每一步输入均一致（每次 13,600 对），且续训成功。默认�
 
 ## AI4AI-for-Anything 的其他项目
 
-[Faster-BAGEL](https://github.com/AI4AI-for-Anything/Faster-BAGEL) · [Faster-RAE](https://github.com/AI4AI-for-Anything/Faster-RAE) · [Faster-LLaVA](https://github.com/AI4AI-for-Anything/Faster-LLaVA) · [Faster-DMD](https://github.com/AI4AI-for-Anything/Faster-DMD) · [Faster-SelfForcing](https://github.com/AI4AI-for-Anything/Faster-SelfForcing)
+[Faster-R3](https://github.com/AI4AI-for-Anything/Faster-R3) · [Faster-BAGEL](https://github.com/AI4AI-for-Anything/Faster-BAGEL) · [Faster-RAE](https://github.com/AI4AI-for-Anything/Faster-RAE) · [Faster-LLaVA](https://github.com/AI4AI-for-Anything/Faster-LLaVA) · [Faster-DMD](https://github.com/AI4AI-for-Anything/Faster-DMD) · [Faster-SelfForcing](https://github.com/AI4AI-for-Anything/Faster-SelfForcing)
 
 ## 上游 JiT 文档
 

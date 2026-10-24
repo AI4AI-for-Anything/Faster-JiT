@@ -34,7 +34,7 @@ pip install numpy==1.26.0 scipy==1.15.3 timm==0.9.16 einops==0.8.2 opencv-python
 pip install git+https://github.com/LTH14/torch-fidelity.git@master
 ```
 
-A fresh installation with these commands has not been benchmarked; check timings against the reference on your
+A fresh installation with these commands has not been benchmarked; check timings against the baseline on your
 machine (see [benchmark protocol](#benchmark-protocol)).
 
 ## Data
@@ -119,10 +119,10 @@ measured runs had none.
 | `JIT_SDPA_BACKEND=flex` | FlexAttention (Triton) for dense BF16 attention with zero dropout. Q and K are cast to BF16 after RoPE. `flash` selects PyTorch Flash SDPA (R01); `reference` (default) keeps the upstream math path with FP32 `QK^T`. | `model_jit.py` | R01 flash, R14 flex | Local BF16 rounding of Q/K; different attention kernel |
 | `JIT_COMPILE_MODEL=1`, `JIT_COMPILE_MODE=reduce-overhead` | Compiles the whole `JiT.forward` with CUDA graphs (upstream compiles each block separately). | `model_jit.py` | R05 | Compiler reordering |
 | `JIT_FUSED_QK_PREP=1` | Triton kernel for QK RMSNorm + interleaved RoPE + head layout. The backward reproduces the eager BF16 rounding boundaries and reduces the norm-weight gradients with a fixed tree, without atomics. Requires `flash` or `flex`, head dim 64. | `util/fused_qknorm_rope.py`, `model_jit.py` | R08 | Not bitwise |
-| `JIT_COMPILE_EMA=1` | **Historical, keep 0.** Compiles the EMA loop with CUDA graphs. It passed the original check but failed the revised EMA check (4 of 366 tensors had a larger max-abs error against FP64 than the reference). | `denoiser.py` | R13, withdrawn at R26 | Failed |
+| `JIT_COMPILE_EMA=1` | **Historical, keep 0.** Compiles the EMA loop with CUDA graphs. It passed the original check but failed the revised EMA check (4 of 366 tensors had a larger max-abs error against FP64 than the baseline). | `denoiser.py` | R13, withdrawn at R26 | Failed |
 | `JIT_BF16_CONTEXT=1` | Casts the 32 in-context tokens to BF16 before concatenation. Upstream concatenates FP32 tokens, which promotes the residual stream of blocks 4–11 to FP32. | `model_jit.py` | R16 | Residual stream of blocks 4–11 in BF16 |
 | `JIT_FUSED_ADAMW=1` | `torch.optim.AdamW` with `fused=True`; unchanged hyperparameters, FP32 master weights and moments. Moves checkpoint step counters to the GPU. | `engine_jit.py` | R17 | Not bitwise |
-| `JIT_FOREACH_EMA=1` | Both EMAs updated with `torch._foreach_mul_` and `torch._foreach_add_`, keeping the reference's multiply-then-add rounding. | `denoiser.py` | R26 | Bitwise identical in the isolated EMA check |
+| `JIT_FOREACH_EMA=1` | Both EMAs updated with `torch._foreach_mul_` and `torch._foreach_add_`, keeping the baseline's multiply-then-add rounding. | `denoiser.py` | R26 | Bitwise identical in the isolated EMA check |
 | `JIT_CONTIGUOUS_EARLY_RESIDUAL=1` | Makes the residual stream contiguous after patch and position embedding (the convolution output is channel-strided). | `model_jit.py` | R35 | Layout only; compiled reductions may reorder |
 | `JIT_SWIGLU_BIAS_FUSION=1` | Triton SwiGLU forward/backward that also produces the `w12` bias gradient from per-tile FP32 partials (fixed reduction, no atomics). Guarded to batch 128, 256 or 288 tokens, width 768, BF16 autocast. | `util/fused_swiglu_bias.py`, `model_jit.py` | R37 | Different bias-reduction grouping |
 | `JIT_COMPILE_DENOISER=1` | Compiles the outer `Denoiser.forward` (noise sampling and loss) with CUDA graphs. Inductor `fallback_random` keeps the ATen random operators. | `denoiser.py` | R47 | RNG fingerprints checked exactly |
@@ -130,7 +130,7 @@ measured runs had none.
 | `JIT_CROP_CACHE=1` | Reads fully verified original center crops from `CROP_CACHE_PATH`; keeps per-worker flip RNG and original batching. Missing/stale caches print `fallback`. | `main_jit.py`, `util/crop_cache.py` | 2026-10-21 | Bitwise-identical model inputs |
 | `TORCH_LOGS=+inductor` | Logging only; set in the measured run to record the tuning choices. | — | R53 | None |
 
-"Not bitwise" means that the change alone is not claimed to reproduce the reference bit for bit. The numerical
+"Not bitwise" means that the change alone is not claimed to reproduce the baseline bit for bit. The numerical
 verdict applies to the combined configuration; see [validation](#validation).
 
 `optimizations/*.json` keeps the configuration of every adopted step. Four of them
@@ -149,11 +149,11 @@ CPU attribution identified PIL decode, BOX/BICUBIC resize and center crop as the
 only those deterministic results; horizontal flips still draw once per sample in the original worker assignment.
 Changing worker count is not equivalent: a 16-worker negative control changed flips from batch 12 onward.
 
-Two independent frozen-bench sessions run reference live → candidate live → reference live → reference preload.
+Two independent frozen-bench sessions run baseline live → candidate live → baseline live → baseline preload.
 Each arm starts with fresh compile caches, warms up for 200 steps, then measures five consecutive 100-step windows
 with synchronized boundaries and no profiler. Each window uses the slowest rank. Startup, compile, checkpoints
 and epoch transitions are excluded. Preload cycles 64 real augmented batches as a diagnostic floor; the candidate
-continues sampling the real dataset. Before = mean of the two reference-live median windows.
+continues sampling the real dataset. Before = mean of the two baseline-live median windows.
 
 | Session | Before (ms) | Cache (ms) | Preload (ms) | Cache vs preload | Cache window range | Live speedup |
 |---|---:|---:|---:|---:|---:|---:|
@@ -175,17 +175,17 @@ included in checkpoint verification; protected model/loss/kernel/schedule source
 
 Losses and final training states are not bitwise reproducible on this stack, even for unchanged code. Here the
 first phase-A loss mismatch is at step 11; maximum absolute rank-mean loss differences
-are 0.016902201 (phase A) and 0.0075864429 (phase B). The frozen reference-vs-reference
+are 0.016902201 (phase A) and 0.0075864429 (phase B). The frozen baseline-vs-baseline
 phase-A maximum is 0.019957064.
 See the [dated aggregate evidence](experiments/2026-10-21-input-pipeline/summary.json) for all timing windows and
-per-100-step mean/max loss differences alongside the reference band. The exact crop and input checks establish the
+per-100-step mean/max loss differences alongside the baseline band. The exact crop and input checks establish the
 input contract; protected sources are unchanged.
 
-Repeating the unchanged reference phase B with identical source, checkpoint, inputs and shared compile cache also
-changed initial loss bits on four ranks. A separate full reference-vs-reference control passes, so the default
+Repeating the unchanged baseline phase B with identical source, checkpoint, inputs and shared compile cache also
+changed initial loss bits on four ranks. A separate full baseline-vs-baseline control passes, so the default
 restored-loss check is not reliably reproducible. This nondeterminism is present in the existing framework stack,
 independent of the input-cache change; the exact backend cause is not isolated. Both failed default verdicts and
-the reference-self controls are retained in the aggregate evidence.
+the baseline-self controls are retained in the aggregate evidence.
 
 A complete run with the frozen bench's existing `--deterministic` option **passes** all checks over 1600 + 100 steps:
 inputs, both initial losses and resume checks agree. Phase-A losses first differ at step 56; maximum absolute
@@ -194,7 +194,7 @@ workspace configuration. Each arm logs eight CUDA-graph skips, unlike the defaul
 validation for that execution mode; the two default-mode paired sessions above establish performance. A passing
 shorttrain does not mean every later loss or final state is bitwise identical.
 
-On 2026-10-21, the benchmark owner corrected the acceptance policy because the unchanged reference itself cannot
+On 2026-10-21, the benchmark owner corrected the acceptance policy because the unchanged baseline itself cannot
 reliably pass the default restored step-0 loss-bit check. Acceptance requires all three:
 
 1. Both default shorttrains have identical inputs on all 13,600 rank-step pairs and `resume_ok=true`.
@@ -205,7 +205,7 @@ All three are satisfied. The frozen benchmark and its raw verdicts are unchanged
 accepted numerical result. No pixel values, precision, model-side switches or training recipe are changed, and no
 new long-training or quality result is claimed.
 
-The frozen shorttrain bench injects `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` for its reference arm. The candidate uses
+The frozen shorttrain bench injects `TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD=1` for its baseline arm. The candidate uses
 explicit `weights_only=False`, so it does not need that workaround. An additional 100-step candidate phase-B replay
 through the same frozen observer, same checkpoint and shared compile cache removes the environment variable and
 completes on all ranks with identical inputs versus the original candidate phase B. Its initial loss bits differ;
@@ -218,7 +218,7 @@ builder/verifier, CPU regression test (`python -m unittest discover -s tests`) a
 
 Measured in the final full check (2 GPUs, 128 images per GPU):
 
-| | Reference | Faster-JiT |
+| | Baseline | Faster-JiT |
 |---|---:|---:|
 | Peak allocated memory per GPU | 25.84 GiB | 17.73 GiB |
 | Process start to first training step | 54.1 s | 194.2 s |
@@ -242,15 +242,15 @@ compile cache. It is paid once per process and is excluded from the step time.
 - **Windows:** 30 warm-up steps, then three 30-step windows inside one epoch; a run reports its median window. A run
   is invalid if its windows differ by more than 10%, if the log shows a recompile-limit or CUDA-graph-skip message, or
   if inputs or sources changed.
-- **Full check:** reference → candidate → reference, each in an independent process with a cold compile cache.
-  Speedup = mean of the two reference runs / candidate. A candidate must exceed max(1.02, 1 + 2 × the relative
-  difference between the two reference runs).
-- **Final check:** reference runs 100.06 and 99.98 ms (spread 0.08%), candidate windows 64.04 / 69.61 / 63.96 ms
+- **Full check:** baseline → candidate → baseline, each in an independent process with a cold compile cache.
+  Speedup = mean of the two baseline runs / candidate. A candidate must exceed max(1.02, 1 + 2 × the relative
+  difference between the two baseline runs).
+- **Final check:** baseline runs 100.06 and 99.98 ms (spread 0.08%), candidate windows 64.04 / 69.61 / 63.96 ms
   (spread 8.8%, median 64.04 ms) → **1.5618×**. The first full check of this configuration was invalid (window spread
   28%) and was rerun with unchanged code.
 
 For scale: the unmodified upstream command on the full ImageNet training set ran at about 101–104 ms per step on
-these 2 GPUs (steady state of a 12-minute run, 26 GB peak per GPU), close to the 100.02 ms reference measured on
+these 2 GPUs (steady state of a 12-minute run, 26 GB peak per GPU), close to the 100.02 ms baseline measured on
 the fixed subset.
 
 Single-run timings (`time`) were used only to screen candidates. All speedups and step times in the README and in the
@@ -261,31 +261,31 @@ history figures come from full checks; the GEMM time budget comes from profiles 
 The check runs four gates in order and stops at the first failure: structure, benefit, bitwise, statistical.
 
 1. **Structure.** Command line, recipe, hyperparameters, data, augmentation, model structure, loss, label drop and
-   optimizer semantics are compared with the reference source (AST-based); the first input batches must be bitwise
+   optimizer semantics are compared with the baseline source (AST-based); the first input batches must be bitwise
    identical; a recorded short case must match exactly in step counts, learning rates, random-number fingerprints,
    per-module call counts and cross-rank relations.
    An **EMA semantic check** (added at R26) verifies the decays (exactly 0.9999 and 0.9996), one update of each EMA
-   after each optimizer step, coverage of all parameters and FP32 state. It also runs the reference and candidate
+   after each optimizer step, coverage of all parameters and FP32 state. It also runs the baseline and candidate
    `update_ema` for four steps from a frozen checkpoint with perturbed parameters; each tensor must be bitwise
-   identical, or its squared-L2 and max-abs error against an FP64 update must not exceed the reference's.
+   identical, or its squared-L2 and max-abs error against an FP64 update must not exceed the baseline's.
 2. **Benefit.** The timing rule above.
 3. **Bitwise.** A deterministic 3-step case on 2 GPUs from a post-warm-up checkpoint records the loss, all gradients,
    parameter updates and values, both EMAs and the AdamW state (8,760 tensors). If all are bitwise identical, the
    check passes here.
 4. **Statistical.** Otherwise, 300-step training trajectories with deterministic kernels start from the
    post-warm-up checkpoint with matched seeds. Endpoints are the mean training loss over steps 50–100, 100–150,
-   150–200, 200–250 and 250–300. The tolerance δ = 2σ, where σ is the reference's seed-to-seed standard deviation
-   frozen from 10 reference seeds before any candidate was judged. With 3 seeds: pass if every endpoint's mean
+   150–200, 200–250 and 250–300. The tolerance δ = 2σ, where σ is the baseline's seed-to-seed standard deviation
+   frozen from 10 baseline seeds before any candidate was judged. With 3 seeds: pass if every endpoint's mean
    difference is within δ; fail if any exceeds δ with paired-t p < 0.05; otherwise extend to 6 seeds.
 
-The post-warm-up checkpoint comes from continuing the reference training on full ImageNet to the end of epoch 4
+The post-warm-up checkpoint comes from continuing the baseline training on full ImageNet to the end of epoch 4
 (25,020 optimizer steps), so the learning rate has left the warm-up ramp.
 
 **Final configuration:** no exact-item failures; 1,574 of 8,760 recorded tensors bitwise identical, so the bitwise
 gate did not pass; the isolated EMA check was bitwise identical on 4 × 366 tensors; the statistical gate passed with
 3 seeds:
 
-| Loss window (steps) | Mean difference / reference σ | Within δ = 2σ |
+| Loss window (steps) | Mean difference / baseline σ | Within δ = 2σ |
 |---|---:|:---:|
 | 50–100 | −0.51 | ✓ |
 | 100–150 | +0.02 | ✓ |
@@ -295,7 +295,7 @@ gate did not pass; the isolated EMA check was bitwise identical on 4 × 366 tens
 
 Before optimization started, the check was tested on known candidates: unchanged code passed the bitwise gate; a
 changed hyperparameter, label drop set to 0 and a missing second EMA were rejected; an eager-mode variant of the
-reference passed the statistical gate; unchanged code timed against itself was judged "no benefit". After the EMA
+baseline passed the statistical gate; unchanged code timed against itself was judged "no benefit". After the EMA
 revision, a decay of 0.9998, a missing second EMA and an EMA update moved before the optimizer step were rejected,
 and the foreach EMA update passed.
 
@@ -323,7 +323,7 @@ Outside the check, both arms were trained for 40 epochs and scored with the upst
 
 | Implementation | FID-50K ↓ | IS ↑ |
 |---|---:|---:|
-| Reference | 39.07 | 45.86 |
+| Baseline | 39.07 | 45.86 |
 | Faster-JiT | 39.24 | 46.55 |
 
 Each arm was run once, so run-to-run variance was not measured; the two FIDs differ by 0.17. The paper reports
@@ -334,7 +334,7 @@ Each arm was run once, so run-to-run variance was not measured; the two FIDs dif
 All rows are full checks of cumulative configurations (data in
 [`performance-views/history.json`](performance-views/history.json)).
 
-| Round | Commit | Change | Reference (ms) | Faster-JiT (ms) | Speedup | Check |
+| Round | Commit | Change | Baseline (ms) | Faster-JiT (ms) | Speedup | Check |
 |---|---|---|---:|---:|---:|---|
 | R01 | `081d45e` | Flash SDPA attention | 100.13 | 80.39 | 1.2456× | original |
 | R05 | `dadd8bc` | Whole-model compile + CUDA graphs | 100.52 | 78.83 | 1.2751× | original |
@@ -387,7 +387,7 @@ Single-run timing screens unless noted; the best adopted configuration at the ti
 | R04, R24, R38, R43, R48 | GEMM autotuning: ATen + Triton, persistent TMA templates, exhaustive subsets for the main shapes | R04, R24: no end-to-end gain. R43, R48: the cuBLAS (ATen) kernel won all eight searched shapes. R38: the full exhaustive search did not finish compiling within a round |
 | R06, R11 | Efficient SDPA; math SDPA with BF16 reductions | 82.95 / 81.58 ms, slower |
 | R07, R23 | RMSNorm backward rewritten in PyTorch; hand-written fused RMSNorm backward | 78.30 / 69.12 ms, no gain |
-| R09 | Foreach EMA | 74.09 ms, rejected by the original EMA rule (code identical to the reference required); adopted at R26 |
+| R09 | Foreach EMA | 74.09 ms, rejected by the original EMA rule (code identical to the baseline required); adopted at R26 |
 | R10 | BF16 norm output for modulation | 75.92 vs 76.36 ms, below the noise threshold |
 | R12 | Fused SwiGLU activation kernel | Full check PASS (1.321×), but paired timings showed no stable gain over R08 |
 | R15, R18, R22, R34, R39 | FlexAttention / QK-kernel tile sizes, launch configurations, mask hints, a repaired TMA forward, stock config search | No gain |
